@@ -1,0 +1,266 @@
+#include <AFMotor.h>
+#include <Servo.h>
+#define Estop 21 //Emergency stop pushbutton connected between pin 21 and ground
+
+// Create motor objects for M2 (pump) and SERVO1
+AF_DCMotor pump(2);       // Connect pump to M2
+AF_DCMotor motor(1);      // Connect DC motor to M1
+Servo servoMotor;         // Servo motor connected to SERVO1
+AF_DCMotor peristalticPump(4);
+
+// Pin assignments
+const int buttonPin = A2;       // Pushbutton pin on analog pin A2
+const int capacitivePin = 52;   // Capacitive level sensor pin on digital pin 52
+
+// State variables
+bool pumpRunning = false;       // Flag to indicate pump running state
+bool buttonPressed = false;     // Flag to indicate button press
+bool motorRunning = false;
+bool peristalticPumpRunning = false;
+bool servoStart = false;
+
+// Turbidity stuff
+
+unsigned long currentMillis=0; // Stores the the current time
+unsigned long previousMillis = 0; // Stores the last time the serial monitor was updated
+const unsigned long interval = 1000;
+int seconds = 0; // Counter for seconds
+
+void setup() {
+  Serial.begin(9600);           // Start serial communication for debugging
+
+  // Set up pins
+  pinMode(buttonPin, INPUT_PULLUP);  // Enable internal pull-up resistor on button pin
+  pinMode(capacitivePin, INPUT_PULLUP);
+  pinMode (Estop, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(Estop), estop, FALLING);
+
+  // Initialize the pump motor speed (0 to 255)
+  pump.setSpeed(150);
+
+  // Attach the servo motor to SERVO2 pin on pin 9
+  servoMotor.attach(9);
+
+  motor.setSpeed(75);
+
+  peristalticPump.setSpeed(150);
+
+  // more turbidity stuff
+
+  const unsigned long interval = 1000;
+  unsigned long previousMillis = 0;
+  int seconds = 0;
+
+  // Ensure the pump and DC motor are off at the start
+  stopPump();
+  stopServo();
+  stopMotor();
+}
+
+void loop() {
+
+  //Turbidity
+  currentMillis = millis(); 
+
+
+
+  // Check the button state (inverted logic due to pull-up resistor)
+  if (digitalRead(buttonPin) == LOW && !buttonPressed) {   // Button is pressed when LOW
+    buttonPressed = true;       // Update the flag
+    Serial.println("Starting pump.");
+    startPump();
+  }
+
+  // Check the capacitive sensor state
+  if (digitalRead(capacitivePin) == LOW && pumpRunning) {
+
+    delay(2000);
+
+    servoStart = true;
+    Serial.println("Stopping pump and starting motor.");
+    stopPump();
+
+    servoSpinPls();
+
+    delay(5000);
+
+    
+
+    stopServo();
+
+    startMotorForDuration(30000); // Start motor for 10 seconds
+
+    delay(165000);
+
+    for (int i = 1; i <= 10; i++){
+      turbidity1();
+      delay(500);
+    }
+
+
+    delay(5000);
+
+    startPPump();
+    delay (150000);
+    stopPPump();
+
+    delay(20000);
+
+    for (int i = 1; i <= 10; i++){
+      turbidity2();
+      delay(500);
+    }
+  }
+  
+
+
+/*
+  // Control the servo based on pump status
+  if (!pumpRunning && servoStart == true) {
+    startServo(); // Start some action by moving servo to a new position
+  } else {
+    stopServo(); // Stop some action by moving servo to a new position
+  }
+
+  */
+
+  // Reset button flag after release
+  if (digitalRead(buttonPin) == HIGH) {  // Button is released when HIGH
+    buttonPressed = false;
+  }
+
+  delay(100);                   // Small delay for debouncing
+}
+
+// Function to start the pump
+void startPump() {
+  pumpRunning = true;
+  pump.run(FORWARD);
+  Serial.println("Pump started");
+}
+
+// Function to stop the pump
+void stopPump() {
+  pumpRunning = false;
+  pump.run(RELEASE);
+  Serial.println("Pump stopped");
+}
+
+// Function to move the servo motor to new position
+void startServo() {
+  servoMotor.write(180);         // Move servo to 90 degrees (adjust as needed)
+}
+
+// Function to stop the servo motor
+void stopServo() {
+  servoMotor.write(90);          // Move servo to 0 degrees
+}
+
+// Function to start the DC motor
+void startMotor() {
+  motorRunning = true;
+  motor.run(FORWARD);
+  Serial.println("Motor running");
+}
+
+// Function to stop the DC motor
+void stopMotor() {
+  motorRunning = false;
+  motor.run(RELEASE);
+  Serial.println("Motor stopped");
+}
+
+// Function to run the DC motor for a specific duration
+void startMotorForDuration(unsigned long duration) {
+  startMotor();
+  delay(duration); // Run motor for the specified duration
+  stopMotor();
+}
+
+void startPPump(){
+  peristalticPumpRunning = true;
+  peristalticPump.run(FORWARD);
+  Serial.println("Peristaltic Pump Running!");
+}
+
+void stopPPump(){
+  peristalticPumpRunning = false;
+  peristalticPump.run(RELEASE);
+  Serial.println("Peristaltic Pump Stopped!");
+}
+
+void turbidity1(){
+
+  Serial.print("Time\tSensor 1\n");
+  Serial.print("====\t========\n");
+
+  //if (currentMillis - previousMillis >= interval) {
+    // Save the last time you updated the serial monitor
+    previousMillis = currentMillis;
+    
+    // Increment the seconds counter
+    seconds++;
+  
+    int sensor1 = analogRead(A0);// read the input on analog pin 0
+    float voltage1 = sensor1 * (5.0 / 1024.0); // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 5V)
+    Serial.print(seconds);
+    Serial.print("\t");
+    Serial.print(String(voltage1) + "\n");
+
+    
+  //}
+}
+
+void turbidity2(){
+
+  Serial.print("Time\tSensor 2\n");
+  Serial.print("====\t========\n");
+
+  //if (currentMillis - previousMillis >= interval) {
+    // Save the last time you updated the serial monitor
+    previousMillis = currentMillis;
+    
+    // Increment the seconds counter
+    seconds++;
+  
+    int sensor2 = analogRead(A1);// read the input on analog pin 0
+    float voltage2 = sensor2 * (5.0 / 1024.0); // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 5V)
+    Serial.print(seconds);
+    Serial.print("\t");
+    Serial.print(String(voltage2) + "\n");
+
+    
+  //}
+}
+
+
+void servoSpinPls(){
+  if (!pumpRunning && servoStart == true) {
+    startServo(); // Start some action by moving servo to a new position
+  } else {
+    stopServo(); // Stop some action by moving servo to a new position
+  }
+}
+
+
+void estop(){
+  Serial.print("Button Pressed");
+  stopServo();
+  stopMotor();
+  stopPPump();
+  stopPump();
+
+  while (1){
+    Serial.print("OPERATAION TERMINATED!\n");
+    delay(50000);
+  }   
+}
+
+
+
+
+
+
+
+
